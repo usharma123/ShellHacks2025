@@ -1,7 +1,15 @@
 import os
+import sys
 import json
+from pathlib import Path
 
-from refactor.adk_agents.product_agent.tools import analyze_product
+# Add the VC_Analyst directory to Python path
+_CURRENT = Path(__file__).resolve()
+_VC_ANALYST_ROOT = _CURRENT.parents[1]
+if str(_VC_ANALYST_ROOT) not in sys.path:
+    sys.path.insert(0, str(_VC_ANALYST_ROOT))
+
+from adk_agents.product_agent.tools import analyze_product
 
 
 def test_analyze_product_basic():

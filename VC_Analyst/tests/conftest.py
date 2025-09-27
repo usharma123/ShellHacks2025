@@ -39,5 +39,5 @@ def patch_openai(monkeypatch):
     def _dummy_ctor(*args, **kwargs):
         return DummyOpenAI()
 
-    monkeypatch.setattr("openai.OpenAI", _dummy_ctor)
+    monkeypatch.setattr("adk_agents.common_llm.OpenAI", _dummy_ctor)
     yield

@@ -7,7 +7,7 @@ _PROJECT_ROOT = _CURRENT.parents[4]
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from agents.vc_scout_agent import VCScoutAgent, StartupInfo  # type: ignore
+# from agents.vc_scout_agent import VCScoutAgent, StartupInfo  # type: ignore
 from ..common_llm import call_llm_json
 
 

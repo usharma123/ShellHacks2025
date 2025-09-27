@@ -11,7 +11,7 @@ _AGENT_INSTRUCTION = (
 
 
 root_agent: LlmAgent = LlmAgent(
-    model=os.environ.get("ADK_MODEL", "gpt-4o-mini"),
+    model=os.environ.get("ADK_MODEL", "gpt-5"),
     name="StartupEvaluator",
     description="Evaluates startups using market, product, and founder signals.",
     instruction=_AGENT_INSTRUCTION,
