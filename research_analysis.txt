@@ -1,8 +1,0 @@
-Research Analysis Report
-Generated on: 2025-09-27 13:54:47
-Topic: ML architecture
-================================================================================
-
-RUNNING: plan_generator -> research_plan
-ERROR during real pipeline execution: 'NoneType' object has no attribute 'response_modalities'
-Ensure you have Vertex AI ADC set up (gcloud auth application-default login) and correct project.
