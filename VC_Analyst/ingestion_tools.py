@@ -1,4 +1,5 @@
 import os
+import re
 from typing import Any, Dict, List, Optional
 from concurrent.futures import ThreadPoolExecutor
 
@@ -100,6 +101,57 @@ def _exa_chat_text(user_prompt: str) -> Optional[str]:
     except Exception:
         return None
 
+def _exa_chat_founder_names(company: str) -> Optional[List[str]]:
+    api_key = os.environ.get("EXA_API_KEY")
+    if not api_key:
+        return None
+    try:
+        from openai import OpenAI
+
+        client = OpenAI(base_url="https://api.exa.ai", api_key=api_key)
+        system = (
+            "You extract only founder names. Return a comma-separated list with no extra words. "
+            "If unknown, return an empty string."
+        )
+        prompt = f"Who are the founders of {company}?"
+        resp = client.chat.completions.create(
+            model="exa",
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt},
+            ],
+        )
+        text = (getattr(resp.choices[0].message, "content", None) or "").strip()
+        if not text:
+            return None
+        # Normalize common formats: bullets, newlines, "and", colons
+        cleaned = text
+        cleaned = re.sub(r"(?i)^founders?:\s*", "", cleaned).strip()
+        cleaned = cleaned.replace("•", ", ").replace("- ", "")
+        cleaned = cleaned.replace("\n", ", ")
+        cleaned = re.sub(r"\s+and\s+", ", ", cleaned, flags=re.IGNORECASE)
+        cleaned = cleaned.replace(";", ",")
+        # Split and filter
+        parts = [t.strip() for t in cleaned.split(",")]
+        tokens: List[str] = []
+        for p in parts:
+            if not p:
+                continue
+            # Drop trailing roles like (CEO) or descriptors after ' - '
+            p = re.sub(r"\s*\([^)]*\)$", "", p).strip()
+            p = p.split(" - ")[0].strip()
+            # Basic sanity: should contain a letter and typically at least 2 tokens for a name
+            if not re.search(r"[A-Za-z]", p):
+                continue
+            if len(p) < 2:
+                continue
+            tokens.append(p)
+        names = [n for n in tokens if n.lower() not in ("unknown", "n/a", "none")]
+        names = [p for p in parts if p.lower() not in ("unknown", "n/a", "none")]
+        return names or None
+    except Exception:
+        return None
+
 def exa_attr_name(query: str) -> Dict[str, Any]:
     snippets = _exa_search_rich(query, num_results=6, summary_query="One-line company name and identity.")
     system = "Return JSON { \"name\": string }. If unknown, 'N/A'."
@@ -176,6 +228,12 @@ def exa_attr_product_fit(query: str) -> Dict[str, Any]:
 
 
 def exa_attr_founders(query: str) -> Dict[str, Any]:
+    # Fast path: ask Exa chat directly for founder names
+    chat_names = _exa_chat_founder_names(query) or []
+    if chat_names:
+        return {"founders": chat_names}
+
+    # Fallback: snippet-grounded JSON extraction with normalization
     snippets = _exa_search_rich(f"{query} founders leadership team CEO CTO", num_results=6, summary_query="Founder names.")
     system = "Return JSON { \"founders\": array|string }. If unknown, return empty array."
     user = _render_snippets(query, snippets) + "\n\nFocus: Founder names only (array or comma-separated)."
@@ -338,7 +396,7 @@ def ingest_company(query: str) -> Dict[str, Any]:
 
 
 def main():
-    query = "Tesla"
+    query = "Exa AI"
     ingest_company(query)
     print(ingest_company(query))
 

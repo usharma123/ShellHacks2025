@@ -83,6 +83,48 @@ a {
   color: #f26625;
 }
 
+/* Recommendation callout styles */
+.recommendationTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.recommendationCard {
+  background: linear-gradient(180deg, rgba(242, 102, 37, 0.12), rgba(242, 102, 37, 0.06));
+  border: 1px solid rgba(242, 102, 37, 0.35);
+  border-radius: 14px;
+  padding: 14px;
+  box-shadow: 0 10px 26px rgba(242, 102, 37, 0.12);
+}
+
+.recommendationLead {
+  color: #f26625;
+  font-weight: 800;
+  font-size: 18px;
+}
+
+/* Product bullets spacing */
+.productBullets ul > li {
+  margin-bottom: 6px;
+}
+
+.productBullets ul > li:last-child {
+  margin-bottom: 0;
+}
+
+/* Global list spacing inside report */
+.report ul > li,
+.report ol > li {
+  margin-bottom: 8px;
+}
+
+.report ul > li:last-child,
+.report ol > li:last-child {
+  margin-bottom: 0;
+}
+
 .muted {
   color: var(--muted);
 }

@@ -219,9 +219,82 @@ function parseFinalAnalysisSections(text: string): Array<{ title: string; bullet
   return null;
 }
 
+function renderBulletedRichText(text: string) {
+  if (!text || typeof text !== "string") return <div style={{ lineHeight: 1.5 }}>—</div>;
+  // Normalize literal "\n" sequences from JSON into real newlines
+  let s = text.replace(/\\n/g, "\n");
+  // Normalize common inline headings by inserting a break after the colon
+  const inlineHeadings = [
+    "summary",
+    "founder-market fit and track record",
+    "strategic clarity and vision alignment",
+    "organizational strengths",
+    "key risks and gaps",
+    "why the score isn’t a 10",
+    "why the score isn't a 10",
+    "what to watch",
+    "bottom line",
+  ];
+  inlineHeadings.forEach((h) => {
+    const re = new RegExp(`(${h})\s*:`, "i");
+    s = s.replace(re, (_, m1) => `${m1}:\n`);
+  });
+  // Remove optional leading "Analysis:" label
+  s = s.replace(/^\s*Analysis:\s*/i, "");
+  // Convert repeated inline bullets " - " into newline bullets "\n- " when there are multiple occurrences
+  const inlineBulletRe = /\s-\s(?=[A-Z0-9“"(])/g;
+  const matches = s.match(inlineBulletRe);
+  if (matches && matches.length >= 2) {
+    s = s.replace(inlineBulletRe, "\n- ");
+  }
+  const blocks = s.split(/\n\n+/).map((b) => b.trim()).filter(Boolean);
+  const headingRe = /^(summary|founder[-\s]market fit[\s\S]*|strategic clarity[\s\S]*|organizational strengths|key risks[\s\S]*|why the score isn['’]t a 10|what to watch[\s\S]*|bottom line|what stands out|gaps and risks|net:|strengths|execution considerations|overall|competitive context)\b/i;
+  const out: any[] = [];
+  let keyIdx = 0;
+  for (const block of blocks) {
+    const lines = block.split(/\n+/).map((l) => l.trim()).filter(Boolean);
+    if (lines.length === 0) continue;
+    let startIdx = 0;
+    if (headingRe.test(lines[0])) {
+      out.push(
+        <div key={`h-${keyIdx++}`} className="muted" style={{ fontWeight: 600, marginTop: 8, marginBottom: 6 }}>
+          {lines[0]}
+        </div>
+      );
+      startIdx = 1;
+    }
+    // Collect bullet lines that start with "- "
+    const bullets: string[] = [];
+    const paras: string[] = [];
+    for (let i = startIdx; i < lines.length; i++) {
+      const ln = lines[i];
+      if (/^-\s+/.test(ln)) bullets.push(ln.replace(/^-[\s]*/, ""));
+      else paras.push(ln);
+    }
+    if (bullets.length) {
+      out.push(
+        <ul key={`u-${keyIdx++}`} style={{ paddingLeft: 18, lineHeight: 1.6 }}>
+          {bullets.map((b, i) => (
+            <li key={i}>{b}</li>
+          ))}
+        </ul>
+      );
+    }
+    if (paras.length) {
+      out.push(
+        <div key={`p-${keyIdx++}`} style={{ lineHeight: 1.6, margin: "6px 0" }}>
+          {paras.join(" ")}
+        </div>
+      );
+    }
+  }
+  if (out.length === 0) return <div style={{ lineHeight: 1.5 }}>{text}</div>;
+  return <div style={{ display: "grid", gap: 6 }}>{out}</div>;
+}
+
 export default function Home() {
   const [query, setQuery] = useState("");
-  const [ingestMode, setIngestMode] = useState("default");
+  const [ingestMode, setIngestMode] = useState("exa");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<any>(null);
@@ -306,7 +379,7 @@ export default function Home() {
             <div className="progressBar" style={{ width: "100%" }}>
               <div className="bar"></div>
             </div>
-            <div className="muted small">This may take 10–30 seconds.</div>
+            <div className="muted small">This may take a few minutes.</div>
           </div>
           <div className="skeleton title" style={{ width: "240px", marginTop: 8 }}></div>
           <div className="skeleton line" style={{ width: "70%" }}></div>
@@ -457,7 +530,60 @@ export default function Home() {
             return (
               <div>
                 <h3>Product Analysis</h3>
-                {renderValue(product)}
+                <div className="productBullets">
+                  {isPlainObject(product) ? (
+                    <div style={{ display: "grid", gap: 12 }}>
+                      {(() => {
+                        const fa = (product as any).features_analysis;
+                        if (fa != null) {
+                          return (
+                            <div>
+                              <div className="muted" style={{ fontWeight: 600, marginBottom: 6 }}>Features Analysis</div>
+                              {typeof fa === "string" ? renderBulletedRichText(fa) : renderValue(fa)}
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
+                      {(() => {
+                        const te = (product as any).tech_stack_evaluation;
+                        if (te != null) {
+                          return (
+                            <div>
+                              <div className="muted" style={{ fontWeight: 600, marginBottom: 6 }}>Tech Stack Evaluation</div>
+                              {typeof te === "string" ? renderBulletedRichText(te) : renderValue(te)}
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
+                      {(() => {
+                        const usp = (product as any).usp_assessment;
+                        if (usp != null) {
+                          return (
+                            <div>
+                              <div className="muted" style={{ fontWeight: 600, marginBottom: 6 }}>USP Assessment</div>
+                              {typeof usp === "string" ? renderBulletedRichText(usp) : renderValue(usp)}
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
+                      {(() => {
+                        // Render any remaining keys not explicitly handled
+                        const entries = Object.entries(product as any).filter(([k]) => !new Set(["features_analysis", "tech_stack_evaluation", "usp_assessment"]).has(k));
+                        if (!entries.length) return null;
+                        return (
+                          <div>
+                            {renderValue(Object.fromEntries(entries))}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  ) : (
+                    renderValue(product)
+                  )}
+                </div>
               </div>
             );
           })()}
@@ -472,7 +598,7 @@ export default function Home() {
                   ? (
                     (() => {
                       const sections = parseFounderAnalysisSections(founderA);
-                      if (sections.length === 0) return <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{founderA}</div>;
+                      if (sections.length === 0) return renderBulletedRichText(founderA);
                       return (
                         <div style={{ display: "grid", gap: 12 }}>
                           {sections.map((sec, idx) => (
@@ -530,15 +656,15 @@ export default function Home() {
             const rec = result?.analysis?.["Final Analysis"]?.recommendation as string | undefined;
             return (
               <div>
-                <h3>Recommendation</h3>
                 {rec ? (
                   (() => {
                     const { preface, numbered } = parseRecommendationStructured(rec);
                     return (
-                      <div style={{ display: "grid", gap: 8 }}>
+                      <div className="recommendationCard" style={{ display: "grid", gap: 8 }}>
+                        <h3 className="recommendationTitle"><span className="titleAccent">Recommendation:</span></h3>
                         {preface.length > 0 && (
                           <div style={{ lineHeight: 1.6 }}>
-                            <div style={{ fontWeight: 700 }}>
+                            <div className="recommendationLead">
                               {preface[0].replace(
                                 /^Invest\s*\((?:Overweight|Lead|Overweight\/Lead)\)\.?/i,
                                 (match) => `${match.replace(/\.*$/, "")}`
@@ -561,13 +687,16 @@ export default function Home() {
                           </ol>
                         )}
                         {preface.length === 0 && numbered.length === 0 && (
-                          <div style={{ lineHeight: 1.5 }}>{rec}</div>
+                          <div className="recommendationLead" style={{ lineHeight: 1.5 }}>{rec}</div>
                         )}
                       </div>
                     );
                   })()
                 ) : (
-                  <div style={{ lineHeight: 1.5 }}>—</div>
+                  <div className="recommendationCard" style={{ lineHeight: 1.5 }}>
+                    <h3 className="recommendationTitle"><span className="titleAccent">Recommendation:</span></h3>
+                    —
+                  </div>
                 )}
               </div>
             );
