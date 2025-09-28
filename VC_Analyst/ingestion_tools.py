@@ -1,5 +1,6 @@
 import os
 import re
+import json
 from typing import Any, Dict, List, Optional
 from concurrent.futures import ThreadPoolExecutor
 
@@ -14,6 +15,69 @@ try:
     load_dotenv()
 except Exception:
     pass
+
+
+def _unique_preserve_order(items: List[str]) -> List[str]:
+    seen = set()
+    out: List[str] = []
+    for it in items:
+        if it not in seen:
+            seen.add(it)
+            out.append(it)
+    return out
+
+
+def _normalize_founder_names(raw: Any) -> List[str]:
+    def _clean_text(text: str) -> str:
+        # Remove markdown links and URLs
+        text = re.sub(r"\[([^\]]+)\]\([^\)]+\)", r"\1", text)
+        text = re.sub(r"https?://\S+", "", text)
+        # Remove parenthetical content
+        text = re.sub(r"\([^)]*\)", "", text)
+        # Remove common prefixes
+        text = re.sub(r"(?i)^(the\s+)?co?-?founders?:\s*", "", text).strip()
+        text = re.sub(r"(?i)^(the\s+)?founders?\s+of\s+[^:]*:\s*", "", text).strip()
+        text = re.sub(r"(?i)^(the\s+)?founders?\s+of\s+[^:]*\s+are\s*", "", text).strip()
+        # Normalize separators
+        text = text.replace("\n", ", ").replace("•", ", ").replace(";", ", ")
+        text = text.replace(" - ", ", ")
+        text = re.sub(r"\s+and\s+", ", ", text, flags=re.IGNORECASE)
+        return text
+
+    def _is_plausible_name(token: str) -> bool:
+        if not token:
+            return False
+        if token.lower() in {"unknown", "n/a", "none"}:
+            return False
+        # Keep letters, spaces, apostrophes, periods, hyphens
+        keep = re.sub(r"[^A-Za-z\s\.'-]", "", token).strip()
+        if not keep:
+            return False
+        words = [w for w in keep.split() if w]
+        if len(words) == 0 or len(words) > 4:
+            return False
+        # Require at least one word to start uppercase
+        caps = sum(1 for w in words if re.match(r"^[A-Z][a-z'.-]*$", w))
+        return caps >= 1
+
+    names: List[str] = []
+    if isinstance(raw, str):
+        cleaned = _clean_text(raw)
+        parts = [p.strip() for p in cleaned.split(",")]
+        for p in parts:
+            p = p.lstrip("-• ").strip()
+            p = re.sub(r"[^A-Za-z\s\.'-]", "", p).strip()
+            if _is_plausible_name(p):
+                names.append(p)
+    elif isinstance(raw, list):
+        for item in raw:
+            if isinstance(item, str):
+                names.extend(_normalize_founder_names(item))
+            elif isinstance(item, dict):
+                n = item.get("name") or item.get("founder")
+                if isinstance(n, str):
+                    names.extend(_normalize_founder_names(n))
+    return _unique_preserve_order(names)
 
 
 def _exa_search_rich(query: str, num_results: int = 6, max_chars: int = 1800, summary_query: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -124,30 +188,7 @@ def _exa_chat_founder_names(company: str) -> Optional[List[str]]:
         text = (getattr(resp.choices[0].message, "content", None) or "").strip()
         if not text:
             return None
-        # Normalize common formats: bullets, newlines, "and", colons
-        cleaned = text
-        cleaned = re.sub(r"(?i)^founders?:\s*", "", cleaned).strip()
-        cleaned = cleaned.replace("•", ", ").replace("- ", "")
-        cleaned = cleaned.replace("\n", ", ")
-        cleaned = re.sub(r"\s+and\s+", ", ", cleaned, flags=re.IGNORECASE)
-        cleaned = cleaned.replace(";", ",")
-        # Split and filter
-        parts = [t.strip() for t in cleaned.split(",")]
-        tokens: List[str] = []
-        for p in parts:
-            if not p:
-                continue
-            # Drop trailing roles like (CEO) or descriptors after ' - '
-            p = re.sub(r"\s*\([^)]*\)$", "", p).strip()
-            p = p.split(" - ")[0].strip()
-            # Basic sanity: should contain a letter and typically at least 2 tokens for a name
-            if not re.search(r"[A-Za-z]", p):
-                continue
-            if len(p) < 2:
-                continue
-            tokens.append(p)
-        names = [n for n in tokens if n.lower() not in ("unknown", "n/a", "none")]
-        names = [p for p in parts if p.lower() not in ("unknown", "n/a", "none")]
+        names = _normalize_founder_names(text)
         return names or None
     except Exception:
         return None
@@ -170,8 +211,9 @@ def exa_attr_description(query: str) -> Dict[str, Any]:
 
 def exa_attr_market_size(query: str) -> Dict[str, Any]:
     prompt = (
-        f"Estimate the market size (TAM/SAM/SOM) for {query}? "
-        f"Answer in <= 20 words with currency and timeframe if known."
+        f"Guess the market size for {query}. "
+        f"Provide your best estimate with currency and timeframe if known. "
+        f"No disclaimers. Answer in <= 20 words."
     )
     text = _exa_chat_text(prompt)
     return {"market_size": text or "N/A"}
@@ -179,11 +221,27 @@ def exa_attr_market_size(query: str) -> Dict[str, Any]:
 
 def exa_attr_growth_rate(query: str) -> Dict[str, Any]:
     prompt = (
-        f"What is the typical CAGR/growth rate for {query}? "
-        f"Answer in <= 15 words including timeframe if available."
+        f"Is {query} growing slowly, moderately, or aggressively? "
+        f"Answer with EXACTLY one sentence: 'The company is growing slowly.' or 'The company is growing moderately.' or 'The company is growing aggressively.' "
+        f"No other words."
     )
-    text = _exa_chat_text(prompt)
-    return {"growth_rate": text or "N/A"}
+    text = _exa_chat_text(prompt) or ""
+    s = text.strip().lower()
+    adjective = "moderately"
+    if "aggress" in s or any(k in s for k in ["fast", "rapid", "hyper", "explos", "surging", "soaring", "rocket"]):
+        adjective = "aggressively"
+    elif "moderate" in s or any(k in s for k in ["steady", "stable", "gradual", "solid"]):
+        adjective = "moderately"
+    elif "slow" in s or any(k in s for k in ["flat", "declin", "stagn", "tepid"]):
+        adjective = "slowly"
+    elif "aggressively" in s:
+        adjective = "aggressively"
+    elif "moderately" in s:
+        adjective = "moderately"
+    elif "slowly" in s:
+        adjective = "slowly"
+    sentence = f"The company is growing {adjective}."
+    return {"growth_rate": sentence}
 
 
 def exa_attr_competition(query: str) -> Dict[str, Any]:
@@ -231,7 +289,7 @@ def exa_attr_founders(query: str) -> Dict[str, Any]:
     # Fast path: ask Exa chat directly for founder names
     chat_names = _exa_chat_founder_names(query) or []
     if chat_names:
-        return {"founders": chat_names}
+        return {"founders": _normalize_founder_names(chat_names)}
 
     # Fallback: snippet-grounded JSON extraction with normalization
     snippets = _exa_search_rich(f"{query} founders leadership team CEO CTO", num_results=6, summary_query="Founder names.")
@@ -243,20 +301,21 @@ def exa_attr_founders(query: str) -> Dict[str, Any]:
     if isinstance(obj, dict):
         val = obj.get("founders")
         if isinstance(val, str):
-            names = [t.strip() for t in val.replace(";", ",").split(",") if t.strip()]
+            names = _normalize_founder_names(val)
         elif isinstance(val, list):
             for v in val:
                 if isinstance(v, str) and v.strip():
-                    names.append(v.strip())
+                    names.extend(_normalize_founder_names(v))
                 elif isinstance(v, dict):
                     n = v.get("name") or v.get("founder")
                     if isinstance(n, str) and n.strip():
-                        names.append(n.strip())
+                        names.extend(_normalize_founder_names(n))
+    names = _normalize_founder_names(names)
     return {"founders": names}
 
 
-def exa_founders_details(founder_names: List[str], num_results: int = 5) -> Dict[str, Any]:
-    def _exa_chat_founder_background(name: str) -> Optional[str]:
+def exa_founders_details(founder_names: List[str], company: Optional[str] = None, num_results: int = 5) -> Dict[str, Any]:
+    def _exa_chat_founder_background(name: str, company_ctx: Optional[str]) -> Optional[str]:
         api_key = os.environ.get("EXA_API_KEY")
         if not api_key:
             return None
@@ -264,9 +323,15 @@ def exa_founders_details(founder_names: List[str], num_results: int = 5) -> Dict
             from openai import OpenAI  # Local import to avoid global dependency at import time
 
             client = OpenAI(base_url="https://api.exa.ai", api_key=api_key)
-            prompt = (
-                f"In one sentence (<= 25 words), summarize {name}'s professional background and notable roles."
-            )
+            if company_ctx:
+                prompt = (
+                    f"In one sentence (<= 25 words), summarize {name}'s professional background and notable roles. "
+                    f"This {name} is a founder of {company_ctx}."
+                )
+            else:
+                prompt = (
+                    f"In one sentence (<= 25 words), summarize {name}'s professional background and notable roles."
+                )
             resp = client.chat.completions.create(
                 model="exa",
                 messages=[{"role": "user", "content": prompt}],
@@ -278,19 +343,35 @@ def exa_founders_details(founder_names: List[str], num_results: int = 5) -> Dict
 
     def _fetch_one(name: str) -> Dict[str, Any]:
         # Primary search
+        if company:
+            primary_query = f"{name} founder of {company} biography achievements education"
+            summary_q = f"Summarize notable roles, companies, achievements, education for {name}, founder of {company}."
+        else:
+            primary_query = f"{name} founder biography achievements education"
+            summary_q = f"Summarize notable roles, companies, achievements, education for {name}."
         snippets = _exa_search_rich(
-            f"{name} founder biography achievements education",
+            primary_query,
             num_results=min(max(num_results, 3), 10),
             max_chars=1600,
-            summary_query=f"Summarize notable roles, companies, achievements, education for {name}.",
+            summary_query=summary_q,
         )
         # Fallback search if nothing returned
         if not snippets:
+            if company:
+                fallback_query = (
+                    f"{name} {company} LinkedIn OR Crunchbase OR Wikipedia founder CEO CTO bio profile"
+                )
+                fallback_summary = f"Key roles, employers, education for {name}, founder of {company}."
+            else:
+                fallback_query = (
+                    f"{name} LinkedIn OR Crunchbase OR Wikipedia founder CEO CTO bio profile"
+                )
+                fallback_summary = f"Key roles, employers, education for {name}."
             snippets = _exa_search_rich(
-                f"{name} LinkedIn OR Crunchbase OR Wikipedia founder CEO CTO bio profile",
+                fallback_query,
                 num_results=10,
                 max_chars=1600,
-                summary_query=f"Key roles, employers, education for {name}.",
+                summary_query=fallback_summary,
             )
         sources: List[Dict[str, str]] = []
         for sn in snippets:
@@ -300,7 +381,7 @@ def exa_founders_details(founder_names: List[str], num_results: int = 5) -> Dict
             if url:
                 sources.append({"title": title, "url": url, "summary": summary})
         # Create a concise background using Exa chat only
-        background = _exa_chat_founder_background(name) or "N/A"
+        background = _exa_chat_founder_background(name, company) or "N/A"
         return {"name": name, "background": background, "sources": sources}
 
     results: List[Dict[str, Any]] = []
@@ -348,7 +429,7 @@ def exa_attribute_search_bundle(query: str, attributes: Optional[List[str]] = No
             try:
                 names = structured.get("founders") or []
                 name_list = [n for n in names if isinstance(n, str) and n.strip()]
-                details = exa_founders_details(name_list)
+                details = exa_founders_details(name_list, company=query)
                 structured["founder_details"] = details.get("founder_details", [])
             except Exception:
                 structured["founder_details"] = []
@@ -396,9 +477,19 @@ def ingest_company(query: str) -> Dict[str, Any]:
 
 
 def main():
-    query = "Exa AI"
-    ingest_company(query)
-    print(ingest_company(query))
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Ingest company info and print clean JSON")
+    parser.add_argument(
+        "query",
+        nargs="*",
+        help="Company or search query (provide words; defaults to 'Exa AI' if omitted)",
+    )
+    args = parser.parse_args()
+
+    query = " ".join(args.query).strip() if args.query else "Exa AI"
+    result = ingest_company(query)
+    print(json.dumps(result, indent=2, ensure_ascii=False))
 
 if __name__ == "__main__":
     main()

@@ -28,6 +28,7 @@ from adk_agents.integration_agent.tools import (
     integrated_analysis_pro,
     quantitative_decision,
 )
+from adk_agents.common_llm import reduce_redundancy_json
 
 # Ingestion is imported dynamically in main() to avoid static import issues during linting
 
@@ -88,23 +89,28 @@ class StartupFramework:
             founder_segmentation = f_seg.result()
             founder_idea_fit = f_fit.result()
 
-        # Integrated analysis and quantitative decision
-        integrated = integrated_analysis_pro(
-            market_info=market_analysis,
-            product_info=product_analysis,
-            founder_info=founder_analysis,
-            founder_idea_fit=founder_idea_fit,
-            founder_segmentation=founder_segmentation,
-            rf_prediction=quick_screen.get("prediction"),
-        )
+        # Integrated analysis and quantitative decision (run in parallel)
+        with ThreadPoolExecutor(max_workers=self.max_workers) as ex:
+            f_integrated = ex.submit(
+                integrated_analysis_pro,
+                market_info=market_analysis,
+                product_info=product_analysis,
+                founder_info=founder_analysis,
+                founder_idea_fit=founder_idea_fit,
+                founder_segmentation=founder_segmentation,
+                rf_prediction=quick_screen.get("prediction"),
+            )
+            f_quant = ex.submit(
+                quantitative_decision,
+                rf_prediction=quick_screen.get("prediction"),
+                founder_idea_fit=founder_idea_fit,
+                founder_segmentation=founder_segmentation,
+            )
 
-        quant_decision = quantitative_decision(
-            rf_prediction=quick_screen.get("prediction"),
-            founder_idea_fit=founder_idea_fit,
-            founder_segmentation=founder_segmentation,
-        )
+            integrated = f_integrated.result()
+            quant_decision = f_quant.result()
 
-        return {
+        result = {
             "Final Analysis": integrated,
             "Market Analysis": market_analysis,
             "Product Analysis": product_analysis,
@@ -117,6 +123,7 @@ class StartupFramework:
             "Startup Info": startup_info,
             "Full Evaluation": full_eval,
         }
+        return reduce_redundancy_json(result)
 
     def analyze_startup_natural(self, startup_info_str: str) -> Dict[str, Any]:
         logger.info("Starting startup analysis in natural language mode")
@@ -147,22 +154,28 @@ class StartupFramework:
             founder_segmentation = f_seg.result()
             founder_idea_fit = f_fit.result()
 
-        integrated = integrated_analysis_pro(
-            market_info=market_analysis,
-            product_info=product_analysis,
-            founder_info=founder_analysis,
-            founder_idea_fit=founder_idea_fit,
-            founder_segmentation=founder_segmentation,
-            rf_prediction=quick_screen.get("prediction"),
-        )
+        # Integrated analysis and quantitative decision (run in parallel)
+        with ThreadPoolExecutor(max_workers=self.max_workers) as ex:
+            f_integrated = ex.submit(
+                integrated_analysis_pro,
+                market_info=market_analysis,
+                product_info=product_analysis,
+                founder_info=founder_analysis,
+                founder_idea_fit=founder_idea_fit,
+                founder_segmentation=founder_segmentation,
+                rf_prediction=quick_screen.get("prediction"),
+            )
+            f_quant = ex.submit(
+                quantitative_decision,
+                rf_prediction=quick_screen.get("prediction"),
+                founder_idea_fit=founder_idea_fit,
+                founder_segmentation=founder_segmentation,
+            )
 
-        quant_decision = quantitative_decision(
-            rf_prediction=quick_screen.get("prediction"),
-            founder_idea_fit=founder_idea_fit,
-            founder_segmentation=founder_segmentation,
-        )
+            integrated = f_integrated.result()
+            quant_decision = f_quant.result()
 
-        return {
+        result = {
             "Final Analysis": integrated,
             "Market Analysis": market_analysis,
             "Product Analysis": product_analysis,
@@ -175,6 +188,7 @@ class StartupFramework:
             "Startup Info": startup_info,
             "Full Evaluation": full_eval,
         }
+        return reduce_redundancy_json(result)
 
 
 def main():

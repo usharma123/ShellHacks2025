@@ -1,4 +1,4 @@
-## Startup Success Forecasting Framework — Google ADK/A2A Refactor
+## YC in your pocket
 
 This refactor wraps the existing `StartupFramework` into a Google ADK agent and also recreates the original agents (market, product, founder, vc_scout, integration) as standalone ADK agents. All ADK agents are exposed via FastAPI apps.
 
