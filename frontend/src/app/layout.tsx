@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "VC Analyst",
+  title: "YC in your pocket",
   description: "Ingest and analyze startups with a beautiful minimalist UI",
 };
 

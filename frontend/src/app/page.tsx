@@ -256,8 +256,8 @@ export default function Home() {
   return (
     <main>
       <div className="hero">
-        <h1 className="title">VC Analyst</h1>
-        <p className="muted">Ingest and analyze startups. Minimalist UI with an elegant gradient.</p>
+        <h1 className="title titleAccent">YC in your Pocket</h1>
+        <p className="muted">Get 600B$'s worth of YC analysis in your pocket.</p>
       </div>
 
       <form onSubmit={onSubmit} className="formRow">
@@ -274,13 +274,47 @@ export default function Home() {
           <option value="exa">exa</option>
           <option value="exa-attrs">exa-attrs</option>
         </select>
-        <button className="button" type="submit" disabled={loading}>
-          {loading ? "Running…" : "Analyze"}
+        <button className="button" type="submit" disabled={loading} aria-busy={loading} aria-live="polite">
+          {loading ? (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+              <span className="spinner" aria-hidden="true" />
+              <span>Analyzing</span>
+              <span className="dotPulse" aria-hidden="true"><span></span><span></span><span></span></span>
+            </span>
+          ) : (
+            "Analyze"
+          )}
         </button>
       </form>
 
+      <div aria-live="polite" className="sr-only">
+        {loading ? "Analyzing. Please wait." : (result ? "Analysis complete." : "")}
+      </div>
+
       {error && (
         <div className="card" style={{ borderColor: "#b00020" }}>Error: {error}</div>
+      )}
+
+      {loading && !result && (
+        <div className="report" role="status" aria-live="polite">
+          <div className="loadingPanel">
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div className="spinner" aria-hidden="true"></div>
+              <div style={{ fontWeight: 600 }}>Analyzing</div>
+              <div className="dotPulse" aria-hidden="true"><span></span><span></span><span></span></div>
+            </div>
+            <div className="progressBar" style={{ width: "100%" }}>
+              <div className="bar"></div>
+            </div>
+            <div className="muted small">This may take 10–30 seconds.</div>
+          </div>
+          <div className="skeleton title" style={{ width: "240px", marginTop: 8 }}></div>
+          <div className="skeleton line" style={{ width: "70%" }}></div>
+          <div className="skeleton block"></div>
+          <div className="skeleton title" style={{ width: "220px", marginTop: 8 }}></div>
+          <div className="skeleton line" style={{ width: "85%" }}></div>
+          <div className="skeleton line sm" style={{ width: "60%" }}></div>
+        </div>
       )}
 
       {result && (
