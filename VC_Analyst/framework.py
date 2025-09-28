@@ -28,7 +28,6 @@ from adk_agents.integration_agent.tools import (
     integrated_analysis_pro,
     quantitative_decision,
 )
-from adk_agents.common_llm import reduce_redundancy_json
 
 # Ingestion is imported dynamically in main() to avoid static import issues during linting
 
@@ -110,7 +109,7 @@ class StartupFramework:
             integrated = f_integrated.result()
             quant_decision = f_quant.result()
 
-        result = {
+        return {
             "Final Analysis": integrated,
             "Market Analysis": market_analysis,
             "Product Analysis": product_analysis,
@@ -123,7 +122,6 @@ class StartupFramework:
             "Startup Info": startup_info,
             "Full Evaluation": full_eval,
         }
-        return reduce_redundancy_json(result)
 
     def analyze_startup_natural(self, startup_info_str: str) -> Dict[str, Any]:
         logger.info("Starting startup analysis in natural language mode")
@@ -175,7 +173,7 @@ class StartupFramework:
             integrated = f_integrated.result()
             quant_decision = f_quant.result()
 
-        result = {
+        return {
             "Final Analysis": integrated,
             "Market Analysis": market_analysis,
             "Product Analysis": product_analysis,
@@ -188,7 +186,6 @@ class StartupFramework:
             "Startup Info": startup_info,
             "Full Evaluation": full_eval,
         }
-        return reduce_redundancy_json(result)
 
 
 def main():

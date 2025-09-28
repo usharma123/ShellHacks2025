@@ -179,43 +179,4 @@ def call_llm_json(system_prompt: str, user_prompt: str) -> Dict[str, Any]:
     return {"analysis": "Unknown error"}
 
 
-def reduce_redundancy_json(data: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Use an LLM to reduce repetition and verbosity in a JSON analysis object while
-    preserving its structure, keys, and non-string values. This is a safe
-    post-processing step intended to make narrative fields more concise.
-
-    Controlled by env var ADK_DEDUP_JSON (set to "0" to disable). If the LLM is
-    unavailable or returns an incompatible structure, the original data is
-    returned unchanged.
-    """
-    try:
-        if os.environ.get("ADK_DEDUP_JSON", "1") == "0":
-            return data
-
-        # Prepare prompts. Instruct the model to keep structure and only tighten strings.
-        system = (
-            "You are a meticulous JSON editor. Remove redundant phrases, repeated points, "
-            "and verbosity ONLY inside string values. Rules:\n"
-            "- Return a JSON object with IDENTICAL keys and structure as the input.\n"
-            "- Do NOT add or remove keys.\n"
-            "- Keep arrays and objects the same shape and order.\n"
-            "- Keep numbers/booleans/null unchanged.\n"
-            "- Preserve meaning and factual content; do not invent new content.\n"
-            "- Respond with valid JSON only."
-        )
-        # Use a stable serialized snapshot for the user message
-        user = (
-            "Tighten and de-duplicate the following JSON while preserving exact structure:\n\n"
-            f"{json.dumps(data, ensure_ascii=False)}"
-        )
-
-        cleaned = call_llm_json(system, user)
-
-        # Basic sanity check: preserve top-level keys
-        if isinstance(cleaned, dict) and set(cleaned.keys()) == set(data.keys()):
-            return cleaned
-    except Exception:
-        # Best-effort; on any error, fall back to original
-        pass
-    return data
+# (reverted) remove redundancy reduction helper
